@@ -7,10 +7,12 @@ require (
 	github.com/fiam/max7456tool v0.0.0-20200315213155-9fc707e4e8d8
 	github.com/go-daq/crc8 v0.0.0-20170116120732-380c22547098
 	github.com/google/go-github v17.0.0+incompatible
+	github.com/google/go-github/v30 v30.0.0
 	github.com/google/go-querystring v1.0.0 // indirect
 	github.com/gotk3/gotk3 v0.4.0 // indirect
 	github.com/hashicorp/go-version v1.2.0
 	github.com/icza/bitio v1.0.0
+	github.com/pkg/browser v0.0.0-20180916011732-0a3d74bf9ce4
 	github.com/sirupsen/logrus v1.4.2
 	github.com/sqweek/dialog v0.0.0-20200304031853-0dcd55bfe06a
 	github.com/stretchr/testify v1.4.0

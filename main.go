@@ -25,6 +25,7 @@ import (
 
 	"osdapp/fonts"
 	"osdapp/frskyosd"
+	"osdapp/internal/autoupdater"
 	"osdapp/internal/dialog"
 )
 
@@ -32,6 +33,8 @@ const (
 	fontsDir   = "fonts"
 	fontsExt   = ".mcm"
 	appVersion = "0.9"
+
+	updatesSource = "https://github.com/FrSkyRC/FrSkyOSDApp"
 )
 
 // App is an opaque type that contains the whole application state
@@ -451,6 +454,50 @@ func (a *App) showError(err error) {
 	log.Println(err)
 }
 
+func (a *App) startAutoupdater() {
+	src, err := autoupdater.NewSource(updatesSource)
+	if err != nil {
+		log.Errorln(err)
+		return
+	}
+	au, err := autoupdater.New(&autoupdater.Options{
+		Version:         appVersion,
+		AcceptPreleases: false,
+		NoSkipRelease:   true,
+		Source:          src,
+		Dialog:          a,
+	})
+	if err != nil {
+		log.Errorln(err)
+		return
+	}
+	au.ScheduleCheckingForUpdates(12 * time.Hour)
+}
+
+// ShowUpdaterDialog implements the autoupdater.Dialog interface
+func (a *App) ShowUpdaterDialog(opts *autoupdater.DialogOptions) {
+	var resp autoupdater.DialogResponse
+	var msg string
+	if opts.AllowsResponse(autoupdater.DialogResponseDownloadAndInstall) {
+		resp = autoupdater.DialogResponseDownloadAndInstall
+		msg = fmt.Sprintf("Would you like to download and install it?")
+	} else if opts.AllowsResponse(autoupdater.DialogResponseDownload) {
+		resp = autoupdater.DialogResponseDownload
+		msg = fmt.Sprintf("Would you like to download it?")
+	} else {
+		return
+	}
+	title := fmt.Sprintf("Version %s is available", opts.AvailableRelease.Version)
+	confirmDialog := dialog.NewConfirm(title, msg, func(ok bool) {
+		if ok {
+			opts.Response(resp)
+		} else {
+			opts.Response(autoupdater.DialogResponseCancel)
+		}
+	}, a.window)
+	confirmDialog.Show()
+}
+
 // Run starts the app
 func (a *App) Run() {
 	a.setInfo(nil)
@@ -463,6 +510,7 @@ func (a *App) Run() {
 	}()
 	a.window.Resize(fyne.NewSize(516, 475))
 	a.window.SetFixedSize(true)
+	go a.startAutoupdater()
 	a.window.ShowAndRun()
 }
 
