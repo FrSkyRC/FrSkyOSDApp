@@ -32,6 +32,8 @@ all: $(MACOS_DIST) $(LINUX_ALL_DIST) $(WIN_ALL_DIST)
 
 $(MACOS_DIST): $(ALL_SRC)
 	fyne package -appID $(APP_ID) -icon $(ICON_SRC) -name "$(APP_NAME)" -release
+	plutil -replace CFBundleShortVersionString -string $(APP_VERSION) "$(APP_NAME).app/Contents/Info.plist"
+	plutil -replace CFBundleVersion -string $(APP_VERSION) "$(APP_NAME).app/Contents/Info.plist"
 	macapptool sign "$(APP_NAME).app"
 	ditto -c -k --sequesterRsrc --keepParent "$(APP_NAME).app" $@
 	rm -r "$(APP_NAME).app"
