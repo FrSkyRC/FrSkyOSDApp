@@ -89,9 +89,23 @@ func (au *AutoUpdater) CheckForUpdates(ctx context.Context) error {
 
 		return vi.GreaterThan(vj)
 	})
+	newestRelease := allReleases[0]
 	currentVersion, err := au.currentVersion()
 	if err != nil {
 		return err
+	}
+	cv, err := version.NewVersion(currentVersion)
+	if err != nil {
+		return err
+	}
+	nv, err := version.NewVersion(newestRelease.Version)
+	if err != nil {
+		return err
+	}
+	if nv.LessThanOrEqual(cv) {
+		// Latest update is the version we're already
+		// running
+		return nil
 	}
 	var responses []DialogResponse
 	if au.opts.NoSkipRelease {
@@ -110,7 +124,7 @@ func (au *AutoUpdater) CheckForUpdates(ctx context.Context) error {
 	wg.Add(1)
 	opts := &DialogOptions{
 		CurrentVersion:   currentVersion,
-		AvailableRelease: allReleases[0],
+		AvailableRelease: newestRelease,
 		Responses:        responses,
 		Response: func(r DialogResponse) {
 			defer wg.Done()
