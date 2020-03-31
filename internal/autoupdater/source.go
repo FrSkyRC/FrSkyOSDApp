@@ -5,12 +5,15 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 
 	"github.com/google/go-github/v30/github"
 	"github.com/hashicorp/go-version"
+	"golang.org/x/oauth2"
 )
 
 // Source is an interface that provides the available releases
@@ -57,7 +60,14 @@ func (s *GitHubSource) parseTag(tag string) (string, error) {
 
 // AvailableVersions implements the Source interface
 func (s *GitHubSource) AvailableVersions(ctx context.Context, token string) ([]*Release, string, error) {
-	client := github.NewClient(nil)
+	var httpClient *http.Client
+	if token := os.Getenv("GITHUB_TOKEN"); token != "" {
+		ts := oauth2.StaticTokenSource(
+			&oauth2.Token{AccessToken: os.Getenv("GITHUB_TOKEN")},
+		)
+		httpClient = oauth2.NewClient(ctx, ts)
+	}
+	client := github.NewClient(httpClient)
 	page := 0
 	if token != "" {
 		nextPage, err := strconv.Atoi(token)
