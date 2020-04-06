@@ -21,6 +21,7 @@ type Dialog interface {
 	Show()
 	Hide()
 	SetDismissText(label string)
+	SetCallback(func(bool))
 }
 
 // Declare conformity to Dialog interface
@@ -37,6 +38,10 @@ type dialog struct {
 	dismiss        *widget.Button
 
 	parent fyne.Window
+}
+
+func (d *dialog) SetCallback(f func(bool)) {
+	d.callback = f
 }
 
 func (d *dialog) setButtons(buttons fyne.CanvasObject) {

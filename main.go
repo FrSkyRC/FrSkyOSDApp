@@ -353,7 +353,13 @@ func (a *App) uploadFont() {
 		content := widget.NewHBox(tabs, layout.NewSpacer(), widget.NewVBox(widget.NewButton("Load File", a.uploadFontFileDialog)))
 		a.uploadFontDialog = dialog.ShowCustom("Select Font", "Cancel", content, a.window)
 	} else {
-		a.uploadFontFileDialog()
+		title := "No fonts could be automatically downloaded"
+		msg := "Please, check your connectivity to github.com\nor select a font manually."
+		warn := dialog.NewInformation(title, msg, a.window)
+		warn.SetCallback(func(_ bool) {
+			a.uploadFontFileDialog()
+		})
+		warn.Show()
 	}
 }
 
