@@ -13,7 +13,6 @@ import (
 
 	"github.com/fiam/max7456tool/mcm"
 	log "github.com/sirupsen/logrus"
-	"go.bug.st/serial"
 )
 
 var (
@@ -57,23 +56,23 @@ const (
 // OSD represents a active connection to an FrSky OSD. Use
 // New to start a new connection.
 type OSD struct {
-	port       serial.Port
-	portCh     chan byte
+	conn       connection
+	connCh     chan byte
 	responseCh chan *frame
 }
 
-func (o *OSD) readPort() {
+func (o *OSD) readConn() {
 	b := make([]byte, 1)
 	for {
-		_, err := o.port.Read(b)
+		_, err := o.conn.Read(b)
 		if err != nil {
 			log.Printf("error reading from port: %v", err)
 			break
 		}
 		log.Tracef(o.dumpByte("R <<", b[0]))
-		o.portCh <- b[0]
+		o.connCh <- b[0]
 	}
-	close(o.portCh)
+	close(o.connCh)
 }
 
 func (o *OSD) write(data []byte) error {
@@ -81,7 +80,7 @@ func (o *OSD) write(data []byte) error {
 		log.Tracef(o.dumpByte("W >>", b))
 	}
 
-	_, err := o.port.Write(data)
+	_, err := o.conn.Write(data)
 	return err
 }
 
@@ -291,7 +290,7 @@ func (o *OSD) FlashFirmware(r io.Reader, progress func(done int, total int)) err
 
 // Close closes the connection to the OSD
 func (o *OSD) Close() error {
-	return o.port.Close()
+	return o.conn.Close()
 }
 
 func (o *OSD) flashChunk(addr uint32, data []byte) (uint32, error) {
@@ -350,36 +349,16 @@ func (o *OSD) dumpByte(prefix string, b byte) string {
 
 // New returns an initialized OSD given its port name.
 func New(port string) (*OSD, error) {
-	mode := &serial.Mode{
-		BaudRate: 115200,
-	}
-	p, err := serial.Open(portName(port), mode)
+	c, err := openConnection(port)
 	if err != nil {
 		return nil, err
 	}
 	osd := &OSD{
-		port:       p,
-		portCh:     make(chan byte, 512),
+		conn:       c,
+		connCh:     make(chan byte, 512),
 		responseCh: make(chan *frame, 8),
 	}
-	go osd.readPort()
+	go osd.readConn()
 	go osd.decodeResponses()
 	return osd, nil
-}
-
-// AvailablePorts returns the list of ports in the system
-// that can be used to connect to FrSkyOSD
-func AvailablePorts() ([]string, error) {
-	ports, err := serial.GetPortsList()
-	if err != nil {
-		if pe, ok := err.(*serial.PortError); ok {
-			if pe.Code() == serial.ErrorEnumeratingPorts {
-				// This happens on Windows when there are
-				// no serial ports
-				return nil, nil
-			}
-		}
-		return nil, err
-	}
-	return filterPorts(ports), nil
 }

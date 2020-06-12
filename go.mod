@@ -8,7 +8,6 @@ require (
 	github.com/go-daq/crc8 v0.0.0-20170116120732-380c22547098
 	github.com/google/go-github v17.0.0+incompatible
 	github.com/google/go-github/v30 v30.0.0
-	github.com/google/go-querystring v1.0.0 // indirect
 	github.com/gotk3/gotk3 v0.4.0 // indirect
 	github.com/hashicorp/go-version v1.2.0
 	github.com/icza/bitio v1.0.0

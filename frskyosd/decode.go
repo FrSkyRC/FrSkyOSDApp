@@ -51,7 +51,7 @@ func (o *OSD) decodeResponses() {
 		cs = nil
 	}
 
-	for c := range o.portCh {
+	for c := range o.connCh {
 		switch state {
 		case decoderStateNone:
 			if c != '$' {
