@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strconv"
 	"time"
 
 	"fyne.io/fyne"
@@ -37,6 +38,7 @@ const (
 	updatesSource = "https://github.com/FrSkyRC/FrSkyOSDApp"
 
 	settingsNotSupportedMessage = "Settings require firmware v2.\nUse the \"Flash Firmware\" button to upgrade."
+	fontsUpdateInterval         = 1 * time.Hour
 )
 
 // App is an opaque type that contains the whole application state
@@ -255,7 +257,40 @@ func (a *App) storagePath(rel string) string {
 	return filepath.Join(usr.HomeDir, ".frskyosd", filepath.FromSlash(rel))
 }
 
+func (a *App) timestampPath(name string) string {
+	return a.storagePath(path.Join("timestamps", name))
+}
+
+func (a *App) timestampHasElapsed(name string, interval time.Duration) bool {
+	p := a.timestampPath(name)
+	data, err := ioutil.ReadFile(p)
+	if err == nil {
+		n, err := strconv.ParseInt(string(data), 10, 64)
+		if err == nil {
+			if time.Unix(n, 0).Add(interval).After(time.Now()) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func (a *App) updateTimestamp(name string) {
+	p := a.timestampPath(name)
+	data := []byte(strconv.FormatInt(time.Now().Unix(), 10))
+	if err := os.MkdirAll(filepath.Dir(p), 0755); err == nil {
+		ioutil.WriteFile(p, data, 0644)
+	}
+
+}
+
 func (a *App) updateRemoteFonts() {
+	const (
+		timestampName = "fonts"
+	)
+	if !a.timestampHasElapsed(timestampName, fontsUpdateInterval) {
+		return
+	}
 	for _, origin := range fonts.Origins() {
 		fonts, err := origin.Fonts()
 		if err != nil {
@@ -288,6 +323,7 @@ func (a *App) updateRemoteFonts() {
 			ioutil.WriteFile(p, data, 0644)
 		}
 	}
+	a.updateTimestamp(timestampName)
 }
 
 func (a *App) updateFontItems(progress func(int)) error {
@@ -725,7 +761,7 @@ func (a *App) Run() {
 	go a.updatePortsSelect()
 	go func() {
 		a.updateRemoteFonts()
-		for range time.Tick(1 * time.Hour) {
+		for range time.Tick(fontsUpdateInterval) {
 			a.updateRemoteFonts()
 		}
 	}()
