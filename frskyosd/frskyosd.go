@@ -126,6 +126,9 @@ func (o *OSD) awaitResponse() (message, error) {
 	for {
 		select {
 		case resp := <-o.responseCh:
+			if resp == nil {
+				return nil, errors.New("connection closed")
+			}
 			msg := getMessage(resp.Type, resp.Cmd)
 			if msg == nil {
 				log.Warnf("dropping unknown message %+v\n", resp)
