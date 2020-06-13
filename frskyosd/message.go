@@ -102,12 +102,39 @@ func (m *FontCharMessage) decode(cmd int, payload []byte) error {
 
 func (m *FontCharMessage) command() int { return int(cmdReadFont) }
 
+// SettingsMessage is used to get and set the settings
+type SettingsMessage struct {
+	Brightness       int8
+	HorizontalOffset int8
+	VerticalOffset   int8
+}
+
+func (m *SettingsMessage) frameType() frameType { return frameTypeOSD }
+func (m *SettingsMessage) decode(cmd int, payload []byte) error {
+	const (
+		expectedSize = 3
+	)
+	if len(payload) != expectedSize {
+		return fmt.Errorf("invalid payload size %d, expecing %d", len(payload), expectedSize)
+	}
+	return binary.Read(bytes.NewReader(payload), binary.LittleEndian, m)
+}
+func (m *SettingsMessage) command() int { return int(cmdGetSettings) }
+
+// RestoreDefaults sets all the settings fields to
+// their default values.
+func (m *SettingsMessage) RestoreDefaults() {
+	m.Brightness = 0
+	m.HorizontalOffset = 0
+	m.VerticalOffset = 0
+}
+
 // ErrorMessage can be returned by methods that could fail.
 // It contains the command for the request that originated it
 // as well as an error code.
 type ErrorMessage struct {
-	Cmd   int
-	Error int
+	Cmd       int
+	ErrorCode int
 }
 
 func (m *ErrorMessage) frameType() frameType { return frameTypeOSD }
@@ -119,11 +146,14 @@ func (m *ErrorMessage) decode(cmd int, payload []byte) error {
 		return fmt.Errorf("invalid payload size %d, expecing %d", len(payload), expectedSize)
 	}
 	m.Cmd = int(payload[0])
-	m.Error = int(int8(payload[1]))
+	m.ErrorCode = int(int8(payload[1]))
 	return nil
 }
 
 func (m *ErrorMessage) command() int { return 0 }
+func (m *ErrorMessage) Error() string {
+	return fmt.Sprintf("error %d in response to command %d", m.ErrorCode, m.Cmd)
+}
 
 func getMessage(t frameType, cmd int) message {
 	if t == frameTypeOSD {
@@ -134,6 +164,8 @@ func getMessage(t frameType, cmd int) message {
 			return &InfoMessage{}
 		case cmdReadFont:
 			return &FontCharMessage{}
+		case cmdGetSettings, cmdSetSettings:
+			return &SettingsMessage{}
 		}
 		return &RawMessage{}
 	}

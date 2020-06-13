@@ -35,6 +35,8 @@ const (
 	appVersion = "1.0.1"
 
 	updatesSource = "https://github.com/FrSkyRC/FrSkyOSDApp"
+
+	settingsNotSupportedMessage = "Settings require firmware v2.\nUse the \"Flash Firmware\" button to upgrade."
 )
 
 // App is an opaque type that contains the whole application state
@@ -49,9 +51,11 @@ type App struct {
 	uploadFontButton    *widget.Button
 	fontItems           []*FontIcon
 	uploadFontDialog    dialog.Dialog
+	settingsButton      *widget.Button
 	flashFirmwareButton *widget.Button
 	connectedPort       string
 	osd                 *frskyosd.OSD
+	info                *frskyosd.InfoMessage
 }
 
 func newApp() *App {
@@ -62,6 +66,7 @@ func newApp() *App {
 	a.connectButton.Disable()
 	a.portsSelect = widget.NewSelect(a.ports, a.portSelectionChanged)
 	a.uploadFontButton = widget.NewButton("Upload Font", a.uploadFont)
+	a.settingsButton = widget.NewButton("Settings", a.showSettings)
 	versionStyle := fyne.TextStyle{
 		Monospace: true,
 	}
@@ -104,6 +109,8 @@ func newApp() *App {
 		),
 		widget.NewVBox(fontRows...),
 		layout.NewSpacer(),
+		widget.NewHBox(a.settingsButton, layout.NewSpacer()),
+		layout.NewSpacer(),
 		widget.NewHBox(
 			widget.NewLabelWithStyle("OSD Version:", fyne.TextAlignLeading, versionStyle),
 			a.versionLabel,
@@ -123,14 +130,17 @@ func (a *App) setInfo(info *frskyosd.InfoMessage) {
 		} else {
 			text = fmt.Sprintf("%v.%v.%v", info.Version.Major, info.Version.Minor, info.Version.Patch)
 			a.uploadFontButton.Enable()
+			a.settingsButton.Enable()
 		}
 		a.flashFirmwareButton.Enable()
 	} else {
 		text = "Disconnected"
 		a.uploadFontButton.Disable()
 		a.flashFirmwareButton.Disable()
+		a.settingsButton.Disable()
 	}
 	a.versionLabel.SetText(text)
+	a.info = info
 }
 
 func (a *App) connectOrDisconnect() {
@@ -221,6 +231,16 @@ func (a *App) availablePorts() []string {
 	return ports
 }
 
+func (a *App) isConnectedToV2() bool {
+	if a.info != nil {
+		if a.info.Version.Major >= 2 {
+			return true
+		}
+		return a.info.Version.Major == 1 && a.info.Version.Minor >= 99
+	}
+	return false
+}
+
 func (a *App) clearFontItems() {
 	for _, v := range a.fontItems {
 		v.SetFont(nil)
@@ -271,6 +291,10 @@ func (a *App) updateRemoteFonts() {
 }
 
 func (a *App) updateFontItems(progress func(int)) error {
+	// Used for testing
+	if os.Getenv("FRSKY_OSD_SKIP_FONT_ITEMS") == "1" {
+		return nil
+	}
 	for ii, v := range a.fontItems {
 		msg, err := a.osd.ReadFontChar(uint(ii))
 		if err != nil {
@@ -458,6 +482,197 @@ func (a *App) showError(err error) {
 		dialog.ShowError(err, a.window)
 	}
 	log.Println(err)
+}
+
+func (a *App) drawCorner(x, y, dx, dy int) error {
+	if err := a.osd.SetStrokeColor(frskyosd.CWhite); err != nil {
+		return err
+	}
+	if err := a.osd.MoveToPoint(x, y); err != nil {
+		return err
+	}
+	if err := a.osd.StrokeLineToPoint(x+dx, y); err != nil {
+		return err
+	}
+	if err := a.osd.MoveToPoint(x, y); err != nil {
+		return err
+	}
+	if err := a.osd.StrokeLineToPoint(x, y+dy); err != nil {
+		return err
+	}
+	ox := 1
+	if dx < 0 {
+		ox = -1
+	}
+	oy := 1
+	if dy < 0 {
+		oy = -1
+	}
+	for ii := x; ii != x+dx; ii += ox {
+		if ii%5 == 0 {
+			if err := a.osd.MoveToPoint(ii, y); err != nil {
+				return err
+			}
+			if err := a.osd.StrokeLineToPoint(ii, y+oy*5); err != nil {
+				return err
+			}
+		}
+	}
+	for ii := y; ii != y+dy; ii += oy {
+		if ii%5 == 0 {
+			if err := a.osd.MoveToPoint(x, ii); err != nil {
+				return err
+			}
+			if err := a.osd.StrokeLineToPoint(x+ox*5, ii); err != nil {
+				return err
+			}
+		}
+	}
+	if err := a.osd.MoveToPoint(x, y); err != nil {
+		return err
+	}
+	if err := a.osd.SetStrokeColor(frskyosd.CBlack); err != nil {
+		return err
+	}
+	if err := a.osd.MoveToPoint(x+ox, y+oy); err != nil {
+		return err
+	}
+	if err := a.osd.StrokeLineToPoint(x+dx, y+oy); err != nil {
+		return err
+	}
+	if err := a.osd.MoveToPoint(x+ox, y+oy); err != nil {
+		return err
+	}
+	if err := a.osd.StrokeLineToPoint(x+ox, y+dy); err != nil {
+		return err
+	}
+
+	if err := a.osd.SetStrokeColor(frskyosd.CWhite); err != nil {
+		return err
+	}
+	ox *= 2
+	oy *= 2
+	if err := a.osd.MoveToPoint(x+ox, y+oy); err != nil {
+		return err
+	}
+	if err := a.osd.StrokeLineToPoint(x+dx, y+oy); err != nil {
+		return err
+	}
+	if err := a.osd.MoveToPoint(x+ox, y+oy); err != nil {
+		return err
+	}
+	if err := a.osd.StrokeLineToPoint(x+ox, y+dy); err != nil {
+		return err
+	}
+	return nil
+}
+
+// Show some stuff on the screen so the user
+// can get a better idea of how the changes are
+// affecting the OSD
+func (a *App) prepareToShowSettings() error {
+	const (
+		rectSize   = 50
+		rectMargin = 20
+		lineSize   = 50
+	)
+	info, err := a.osd.Info()
+	if err != nil {
+		return err
+	}
+	if err := a.osd.TransactionBegin(); err != nil {
+		return err
+	}
+	if err := a.osd.ResetDrawing(); err != nil {
+		return err
+	}
+	if err := a.osd.ClearScreen(); err != nil {
+		return err
+	}
+	midX := int(info.Pixels.Width / 2)
+	midY := int(info.Pixels.Height / 2)
+	rectY := midY - rectSize/2
+	if err := a.osd.SetFillColor(frskyosd.CBlack); err != nil {
+		return err
+	}
+	if err := a.osd.FillRect(midX-rectSize/2-rectMargin-rectSize,
+		rectY, rectSize, rectSize); err != nil {
+		return err
+	}
+	if err := a.osd.SetFillColor(frskyosd.CGray); err != nil {
+		return err
+	}
+	if err := a.osd.FillRect(midX-rectSize/2, rectY, rectSize, rectSize); err != nil {
+		return err
+	}
+	if err := a.osd.SetFillColor(frskyosd.CWhite); err != nil {
+		return err
+	}
+	if err := a.osd.FillRect(midX+rectSize/2+rectMargin, rectY, rectSize, rectSize); err != nil {
+		return err
+	}
+	lineX := int(info.Pixels.Width) - 1
+	lineY := int(info.Pixels.Height) - 1
+	if err := a.drawCorner(0, 0, lineSize, lineSize); err != nil {
+		return err
+	}
+	if err := a.drawCorner(0, lineY, lineSize, -lineSize); err != nil {
+		return err
+	}
+	if err := a.drawCorner(lineX, 0, -lineSize, lineSize); err != nil {
+		return err
+	}
+	if err := a.drawCorner(lineX, lineY, -lineSize, -lineSize); err != nil {
+		return err
+	}
+	return a.osd.TransactionCommit()
+}
+
+func (a *App) showSettings() {
+	if a.window == nil {
+		return
+	}
+	if !a.isConnectedToV2() {
+		if a.window != nil {
+			dialog.ShowInformation("Version 2 required", settingsNotSupportedMessage, a.window)
+		}
+		return
+	}
+	a.settingsButton.Disable()
+	loading := dialog.NewProgressInfinite("Loading", "", a.window)
+	loading.Show()
+	go func() {
+		settings, err := a.osd.ReadSettings()
+		a.settingsButton.Enable()
+		if err != nil {
+			loading.Hide()
+			a.showError(err)
+			return
+		}
+		if err := a.prepareToShowSettings(); err != nil {
+			loading.Hide()
+			a.showError(err)
+			return
+		}
+		loading.Hide()
+		settingsDialog := newSettingsDialog(settings, a.window)
+		settingsDialog.OnChanged = func(s *frskyosd.SettingsMessage) {
+			go func() {
+				_, err := a.osd.SetSettings(s)
+				if err != nil {
+					a.showError(err)
+				}
+			}()
+		}
+		settingsDialog.OnClosed = func() {
+			go func() {
+				if err := a.osd.SaveSettings(); err != nil {
+					a.showError(err)
+				}
+				a.osd.ClearScreen()
+			}()
+		}
+	}()
 }
 
 func (a *App) startAutoupdater() {

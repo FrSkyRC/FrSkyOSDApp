@@ -40,12 +40,30 @@ func (e *unexpectedMessageError) Error() string {
 type osdCmd byte
 
 const (
-	cmdError      osdCmd = 0
-	cmdInfo              = 1
-	cmdReadFont          = 2
-	cmdWriteFont         = 3
-	cmdReboot            = 120
-	cmdWriteFlash        = 121
+	protocolVersion = 2
+)
+
+const (
+	cmdError                        osdCmd = 0
+	cmdInfo                                = 1
+	cmdReadFont                            = 2
+	cmdWriteFont                           = 3
+	cmdGetSettings                         = 9
+	cmdSetSettings                         = 10
+	cmdSaveSettings                        = 11
+	cmdTransactionBegin                    = 16
+	cmdTransactionCommit                   = 17
+	cmdTransactionBeginResetDrawing        = 19
+	cmdSetStrokeColor                      = 22
+	cmdSetFillColor                        = 23
+	cmdSetStrokeWidth                      = 29
+	cmdClearScreen                         = 41
+	cmdDrawingReset                        = 43
+	cmdMoveToPoint                         = 50
+	cmdStrokeLineToPoint                   = 51
+	cmdFillRect                            = 56
+	cmdReboot                              = 120
+	cmdWriteFlash                          = 121
 )
 
 const (
@@ -135,7 +153,7 @@ func (o *OSD) Info() (*InfoMessage, error) {
 }
 
 func (o *OSD) info(tryMspPassthrough bool) (*InfoMessage, error) {
-	if err := o.send(cmdInfo, []byte{1}); err != nil {
+	if err := o.send(cmdInfo, []byte{protocolVersion}); err != nil {
 		return nil, err
 	}
 	msg, err := o.awaitResponse()
@@ -208,6 +226,59 @@ func (o *OSD) UploadFont(r io.Reader, progress func(done int, total int)) error 
 		if progress != nil {
 			progress(ii+1, total)
 		}
+	}
+	return nil
+}
+
+// ReadSettings returns the OSD settings
+func (o *OSD) ReadSettings() (*SettingsMessage, error) {
+	buf := []byte{protocolVersion}
+	if err := o.send(cmdGetSettings, buf); err != nil {
+		return nil, err
+	}
+	msg, err := o.awaitResponse()
+	if err != nil {
+		return nil, err
+	}
+	return msg.(*SettingsMessage), nil
+}
+
+// SetSettings sets the OSD settings to volatile memory
+// and returns them.
+// Note that the returned value might be different since
+// the OSD might not accept all the given values.
+func (o *OSD) SetSettings(settings *SettingsMessage) (*SettingsMessage, error) {
+	var buf bytes.Buffer
+	buf.WriteByte(protocolVersion)
+	if err := binary.Write(&buf, binary.LittleEndian, settings); err != nil {
+		return nil, err
+	}
+	if err := o.send(cmdSetSettings, buf.Bytes()); err != nil {
+		return nil, err
+	}
+	msg, err := o.awaitResponse()
+	if err != nil {
+		return nil, err
+	}
+	sm, ok := msg.(*SettingsMessage)
+	if !ok {
+		return nil, fmt.Errorf("expecting SettingsMessage, got %T = %v instead", msg, msg)
+	}
+	return sm, nil
+}
+
+// SaveSettings instructs the OSD to commit the settings to
+// non-volatile memory
+func (o *OSD) SaveSettings() error {
+	if err := o.send(cmdSaveSettings, nil); err != nil {
+		return err
+	}
+	msg, err := o.awaitResponse()
+	if err != nil {
+		return err
+	}
+	if err, ok := msg.(*ErrorMessage); ok {
+		return err
 	}
 	return nil
 }
