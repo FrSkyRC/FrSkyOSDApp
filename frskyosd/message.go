@@ -112,12 +112,15 @@ type SettingsMessage struct {
 func (m *SettingsMessage) frameType() frameType { return frameTypeOSD }
 func (m *SettingsMessage) decode(cmd int, payload []byte) error {
 	const (
-		expectedSize = 3
+		expectedSize = 4
 	)
 	if len(payload) != expectedSize {
 		return fmt.Errorf("invalid payload size %d, expecing %d", len(payload), expectedSize)
 	}
-	return binary.Read(bytes.NewReader(payload), binary.LittleEndian, m)
+	if payload[0] != protocolVersion {
+		return fmt.Errorf("expecting settings version v%d, got v%d instead", protocolVersion, payload[0])
+	}
+	return binary.Read(bytes.NewReader(payload[1:]), binary.LittleEndian, m)
 }
 func (m *SettingsMessage) command() int { return int(cmdGetSettings) }
 
