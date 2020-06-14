@@ -48,6 +48,7 @@ const (
 	cmdInfo                                = 1
 	cmdReadFont                            = 2
 	cmdWriteFont                           = 3
+	cmdGetActiveCamera                     = 6
 	cmdGetSettings                         = 9
 	cmdSetSettings                         = 10
 	cmdSaveSettings                        = 11
@@ -284,6 +285,24 @@ func (o *OSD) SaveSettings() error {
 		return err
 	}
 	return nil
+}
+
+// ActiveCamera returns the index for the currently detected
+// camera. If no camera is detected, the return value will be
+// <= 0. Valid camera indexes start at 1.
+func (o *OSD) ActiveCamera() (int, error) {
+	if err := o.send(cmdGetActiveCamera, nil); err != nil {
+		return -1, err
+	}
+	msg, err := o.awaitResponse()
+	if err != nil {
+		return -1, err
+	}
+	if err, ok := msg.(error); ok && err != nil {
+		return -1, err
+	}
+	rmsg := msg.(*RawMessage)
+	return int(rmsg.Payload[0]), nil
 }
 
 // FlashFirmware flashes the given firmware to the OSD. The data must be

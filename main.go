@@ -691,7 +691,7 @@ func (a *App) showSettings() {
 			return
 		}
 		loading.Hide()
-		settingsDialog := newSettingsDialog(settings, a.window)
+		settingsDialog := newSettingsDialog(a.osd, settings, a.window)
 		settingsDialog.OnChanged = func(s *frskyosd.SettingsMessage) {
 			go func() {
 				_, err := a.osd.SetSettings(s)
@@ -700,10 +700,12 @@ func (a *App) showSettings() {
 				}
 			}()
 		}
-		settingsDialog.OnClosed = func() {
+		settingsDialog.OnClosed = func(changed bool) {
 			go func() {
-				if err := a.osd.SaveSettings(); err != nil {
-					a.showError(err)
+				if changed {
+					if err := a.osd.SaveSettings(); err != nil {
+						a.showError(err)
+					}
 				}
 				a.osd.ClearScreen()
 			}()

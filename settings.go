@@ -4,6 +4,7 @@ import (
 	"image/color"
 	"osdapp/frskyosd"
 	"strconv"
+	"time"
 
 	"fyne.io/fyne"
 	"fyne.io/fyne/canvas"
@@ -13,11 +14,18 @@ import (
 )
 
 const (
-	settingsDialogWidth  = 400
+	settingsDialogWidth  = 450
 	settingsDialogHeight = 300
 
 	settingMinValue = -128
 	settingMaxValue = 127
+
+	helpText = `Use your goggles or screen to view
+the effect of the the OSD settings
+while you adjust them.
+
+Changes are saved to the OSD, but the
+defaults can be restored at any time.`
 )
 
 type settingBox struct {
@@ -143,29 +151,39 @@ func (sb *settingBox) decreaseVal() {
 }
 
 type settingsDialog struct {
-	settings          *frskyosd.SettingsMessage
-	win               *widget.PopUp
-	bg                *canvas.Rectangle
-	brightness        *settingBox
-	horizontalOffset  *settingBox
-	verticalOffset    *settingBox
-	content           *fyne.Container
-	label             fyne.CanvasObject
-	settingsContainer fyne.CanvasObject
-	restoreButton     *widget.Button
-	closeButton       *widget.Button
-	save              *widget.Button
-	buttons           *widget.Box
-	parent            fyne.Window
-	closed            bool
-	OnChanged         func(settings *frskyosd.SettingsMessage)
-	OnClosed          func()
+	osd                   *frskyosd.OSD
+	settings              *frskyosd.SettingsMessage
+	win                   *widget.PopUp
+	bg                    *canvas.Rectangle
+	titleLabel            *widget.Label
+	awaitingLabel         *widget.Label
+	awaitingSubtitleLabel *widget.Label
+	helpLabel             *widget.Label
+	progress              *widget.ProgressBarInfinite
+	brightness            *settingBox
+	horizontalOffset      *settingBox
+	verticalOffset        *settingBox
+	content               *fyne.Container
+	settingsContainer     fyne.CanvasObject
+	restoreButton         *widget.Button
+	closeButton           *widget.Button
+	save                  *widget.Button
+	buttons               *widget.Box
+	parent                fyne.Window
+	closed                bool
+	changed               bool
+	OnChanged             func(settings *frskyosd.SettingsMessage)
+	OnClosed              func(changed bool)
 }
 
-func newSettingsDialog(settings *frskyosd.SettingsMessage, parent fyne.Window) *settingsDialog {
-	d := &settingsDialog{settings: settings}
+func newSettingsDialog(osd *frskyosd.OSD, settings *frskyosd.SettingsMessage, parent fyne.Window) *settingsDialog {
+	d := &settingsDialog{osd: osd, settings: settings}
 	d.bg = canvas.NewRectangle(theme.BackgroundColor())
-	d.label = widget.NewLabelWithStyle("Settings", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+	d.titleLabel = widget.NewLabelWithStyle("Settings", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+	d.awaitingLabel = widget.NewLabel("Awaiting for camera...")
+	d.awaitingSubtitleLabel = widget.NewLabel("Connect a camera to configure the OSD settings")
+	d.progress = widget.NewProgressBarInfinite()
+	d.helpLabel = widget.NewLabelWithStyle(helpText, fyne.TextAlignCenter, fyne.TextStyle{Monospace: true})
 	d.brightness = newSettingBox("Brightness:")
 	d.brightness.UpdateVal(int(settings.Brightness))
 	d.brightness.OnChanged = d.onSettingChanged
@@ -181,6 +199,7 @@ func newSettingsDialog(settings *frskyosd.SettingsMessage, parent fyne.Window) *
 		d.verticalOffset.Content(),
 	)
 	d.restoreButton = widget.NewButtonWithIcon("Restore Defaults", theme.DeleteIcon(), d.restore)
+	d.restoreButton.Disable()
 	d.closeButton = widget.NewButtonWithIcon("Close", theme.CancelIcon(), d.dismiss)
 	d.buttons = widget.NewHBox(
 		d.restoreButton,
@@ -189,10 +208,21 @@ func newSettingsDialog(settings *frskyosd.SettingsMessage, parent fyne.Window) *
 	)
 	d.content = fyne.NewContainerWithLayout(d,
 		d.bg,
-		d.label,
+		d.titleLabel,
+		d.awaitingLabel,
+		d.progress,
+		d.awaitingSubtitleLabel,
 		d.settingsContainer,
+		d.helpLabel,
 		d.buttons,
 	)
+	cam, _ := d.osd.ActiveCamera()
+	if cam > 0 {
+		d.onCameraConnected()
+	} else {
+		d.onCameraDisconected()
+		go d.awaitForCamera()
+	}
 	d.win = widget.NewModalPopUp(d.content, parent.Canvas())
 	d.applyTheme()
 	d.win.Show()
@@ -200,14 +230,31 @@ func newSettingsDialog(settings *frskyosd.SettingsMessage, parent fyne.Window) *
 }
 
 func (d *settingsDialog) Layout(obj []fyne.CanvasObject, size fyne.Size) {
+	const (
+		progressHeight = 40
+	)
 	d.bg.Move(fyne.NewPos(-theme.Padding(), -theme.Padding()))
 	d.bg.Resize(size.Add(fyne.NewSize(theme.Padding()*2, theme.Padding()*2)))
-	titleSize := d.label.MinSize()
-	d.label.Move(fyne.NewPos((settingsDialogWidth-titleSize.Width)/2, theme.Padding()))
+	titleSize := d.titleLabel.MinSize()
+	d.titleLabel.Move(fyne.NewPos((settingsDialogWidth-titleSize.Width)/2, theme.Padding()))
 
 	settingsSize := d.settingsContainer.MinSize()
 	d.settingsContainer.Resize(fyne.NewSize(settingsDialogWidth, settingsSize.Height))
 	d.settingsContainer.Move(fyne.NewPos(0, titleSize.Height+theme.Padding()))
+
+	d.helpLabel.Move(fyne.NewPos((settingsDialogWidth)/2,
+		titleSize.Height+theme.Padding()*3+settingsSize.Height))
+
+	d.progress.Resize(fyne.NewSize(settingsDialogWidth, progressHeight))
+	d.progress.Move(fyne.NewPos(0, (size.Height-progressHeight)/2))
+
+	awaitingSize := d.awaitingLabel.MinSize()
+	d.awaitingLabel.Move(fyne.NewPos((size.Width-awaitingSize.Width)/2,
+		size.Height/2-progressHeight/2-theme.Padding()-awaitingSize.Height))
+
+	awaitingSubtitleSize := d.awaitingSubtitleLabel.MinSize()
+	d.awaitingSubtitleLabel.Move(fyne.NewPos((size.Width-awaitingSubtitleSize.Width)/2,
+		size.Height/2+progressHeight/2+theme.Padding()))
 
 	buttonsSize := d.buttons.MinSize()
 	d.buttons.Resize(fyne.NewSize(settingsDialogWidth, buttonsSize.Height))
@@ -218,6 +265,38 @@ func (d *settingsDialog) MinSize(obj []fyne.CanvasObject) fyne.Size {
 	return fyne.NewSize(settingsDialogWidth, settingsDialogHeight)
 }
 
+func (d *settingsDialog) awaitForCamera() {
+	for {
+		cam, err := d.osd.ActiveCamera()
+		if err != nil {
+			d.dismiss()
+		}
+		if cam > 0 {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	d.onCameraConnected()
+}
+
+func (d *settingsDialog) onCameraDisconected() {
+	d.progress.Show()
+	d.awaitingLabel.Show()
+	d.awaitingSubtitleLabel.Show()
+	d.settingsContainer.Hide()
+	d.helpLabel.Hide()
+	d.restoreButton.Disable()
+}
+
+func (d *settingsDialog) onCameraConnected() {
+	d.progress.Hide()
+	d.awaitingLabel.Hide()
+	d.awaitingSubtitleLabel.Hide()
+	d.settingsContainer.Show()
+	d.helpLabel.Show()
+	d.restoreButton.Enable()
+}
+
 func (d *settingsDialog) applyTheme() {
 	r, g, b, _ := theme.BackgroundColor().RGBA()
 	bg := &color.NRGBA{R: uint8(r), G: uint8(g), B: uint8(b), A: 230}
@@ -225,6 +304,7 @@ func (d *settingsDialog) applyTheme() {
 }
 
 func (d *settingsDialog) onChanged() {
+	d.changed = true
 	onChanged := d.OnChanged
 	if onChanged != nil {
 		onChanged(d.settings)
@@ -259,6 +339,6 @@ func (d *settingsDialog) dismiss() {
 	d.win.Hide()
 	onClosed := d.OnClosed
 	if onClosed != nil {
-		onClosed()
+		onClosed(d.changed)
 	}
 }
