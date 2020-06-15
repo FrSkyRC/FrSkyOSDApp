@@ -28,6 +28,7 @@ import (
 	"osdapp/frskyosd"
 	"osdapp/internal/autoupdater"
 	"osdapp/internal/dialog"
+	"osdapp/internal/osdversion"
 )
 
 const (
@@ -132,7 +133,7 @@ func (a *App) setInfo(info *frskyosd.InfoMessage) {
 			a.uploadFontButton.Disable()
 			text = "Bootloader"
 		} else {
-			text = fmt.Sprintf("%v.%v.%v", info.Version.Major, info.Version.Minor, info.Version.Patch)
+			text = osdversion.Format(int(info.Version.Major), int(info.Version.Minor), int(info.Version.Patch))
 			a.uploadFontButton.Enable()
 			a.settingsButton.Enable()
 		}
