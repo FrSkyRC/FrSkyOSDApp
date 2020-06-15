@@ -2,10 +2,12 @@ package main // import "osdapp"
 
 import (
 	"bytes"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"io/ioutil"
+	"net/http"
 	"os"
 	"os/user"
 	"path"
@@ -24,6 +26,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	dlgs "github.com/sqweek/dialog"
 
+	"osdapp/firmware"
 	"osdapp/fonts"
 	"osdapp/frskyosd"
 	"osdapp/internal/autoupdater"
@@ -46,21 +49,22 @@ Use the "Flash Firmware" button to flash a firmware`
 
 // App is an opaque type that contains the whole application state
 type App struct {
-	app                 fyne.App
-	connected           bool
-	ports               []string
-	window              fyne.Window
-	portsSelect         *widget.Select
-	connectButton       *widget.Button
-	versionLabel        *widget.Label
-	uploadFontButton    *widget.Button
-	fontItems           []*FontIcon
-	uploadFontDialog    dialog.Dialog
-	settingsButton      *widget.Button
-	flashFirmwareButton *widget.Button
-	connectedPort       string
-	osd                 *frskyosd.OSD
-	info                *frskyosd.InfoMessage
+	app                  fyne.App
+	connected            bool
+	ports                []string
+	window               fyne.Window
+	portsSelect          *widget.Select
+	connectButton        *widget.Button
+	versionLabel         *widget.Label
+	uploadFontButton     *widget.Button
+	fontItems            []*FontIcon
+	uploadFontDialog     dialog.Dialog
+	settingsButton       *widget.Button
+	flashFirmwareButton  *widget.Button
+	selectFirmwareDialog *firmwaresDialog
+	connectedPort        string
+	osd                  *frskyosd.OSD
+	info                 *frskyosd.InfoMessage
 }
 
 func newApp() *App {
@@ -497,11 +501,55 @@ func (a *App) flashFirmware(r io.Reader) {
 	a.setInfo(info)
 }
 
+func (a *App) showFirmwareLoadingError(err error) {
+	msg := fmt.Sprintf("%v\nPlease, select a file manually", err)
+	dlg := dialog.ShowInformation("No firmwares could be loaded", msg, a.window)
+	dlg.SetCallback(func(_ bool) {
+		a.selectFirmwareFile()
+	})
+	dlg.Show()
+}
+
 func (a *App) selectFirmware() {
-	a.selectFirmwareFile()
+	progress := dialog.NewProgressInfinite("Updating", "Check for firmware updates", a.window)
+	progress.Show()
+	go func() {
+		firmwares, err := firmware.Load()
+		if err != nil {
+			progress.Hide()
+			a.showFirmwareLoadingError(err)
+			return
+		}
+		if len(firmwares) == 0 {
+			progress.Hide()
+			a.showFirmwareLoadingError(errors.New("no firmwares found"))
+			return
+		}
+		a.selectFirmwareDialog = newFirmwaresDialog(firmwares, a.window)
+		a.selectFirmwareDialog.OnFirmwareSelected = func(f *firmware.Firmware) {
+			a.selectFirmwareEntry(f)
+		}
+		a.selectFirmwareDialog.OnSelectFile = a.selectFirmwareFile
+		progress.Hide()
+		a.selectFirmwareDialog.Show()
+	}()
+}
+
+func (a *App) selectFirmwareEntry(f *firmware.Firmware) {
+	resp, err := http.Get(f.URL)
+	if err != nil {
+		a.showError(err)
+		return
+	}
+	defer resp.Body.Close()
+	a.flashFirmware(resp.Body)
 }
 
 func (a *App) selectFirmwareFile() {
+	if a.selectFirmwareDialog != nil {
+		a.selectFirmwareDialog.Hide()
+		a.selectFirmwareDialog = nil
+	}
 	filename, err := dlgs.File().Filter("Firmware (*.bin)", "bin").Load()
 	platformAfterFileDialog()
 	if err != nil {
@@ -517,7 +565,6 @@ func (a *App) selectFirmwareFile() {
 	}
 	defer f.Close()
 	a.flashFirmware(f)
-
 }
 
 func (a *App) showError(err error) {
