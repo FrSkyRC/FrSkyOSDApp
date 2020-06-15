@@ -38,7 +38,9 @@ const (
 	updatesSource = "https://github.com/FrSkyRC/FrSkyOSDApp"
 
 	settingsNotSupportedMessage = "Settings require firmware v2.\nUse the \"Flash Firmware\" button to upgrade."
-	fontsUpdateInterval         = 1 * time.Hour
+	bootloaderModeMessage       = `That probably means there's no valid firmware loaded.
+Use the "Flash Firmware" button to flash a firmware`
+	fontsUpdateInterval = 1 * time.Hour
 )
 
 // App is an opaque type that contains the whole application state
@@ -187,6 +189,10 @@ func (a *App) connectOrDisconnect() {
 			a.connectButton.SetText("Disconnect")
 			a.connected = true
 			prog.Hide()
+			if info.IsBootloader {
+				dlg := dialog.ShowInformation("OSD is in bootloader mode", bootloaderModeMessage, a.window)
+				dlg.Show()
+			}
 		}()
 
 		prog.Show()
