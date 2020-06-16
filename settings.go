@@ -1,7 +1,9 @@
 package main
 
 import (
+	"fmt"
 	"image/color"
+	"os"
 	"osdapp/frskyosd"
 	"strconv"
 	"time"
@@ -295,6 +297,155 @@ func (d *settingsDialog) onCameraConnected() {
 	d.settingsContainer.Show()
 	d.helpLabel.Show()
 	d.restoreButton.Enable()
+	if err := d.drawTestPattern(); err != nil {
+		fmt.Fprintf(os.Stderr, "error drawing test pattern: %v\n", err)
+	}
+}
+
+func (d *settingsDialog) drawCorner(x, y, dx, dy int) error {
+	osd := d.osd
+	if err := osd.SetStrokeColor(frskyosd.CWhite); err != nil {
+		return err
+	}
+	if err := osd.MoveToPoint(x, y); err != nil {
+		return err
+	}
+	if err := osd.StrokeLineToPoint(x+dx, y); err != nil {
+		return err
+	}
+	if err := osd.MoveToPoint(x, y); err != nil {
+		return err
+	}
+	if err := osd.StrokeLineToPoint(x, y+dy); err != nil {
+		return err
+	}
+	ox := 1
+	if dx < 0 {
+		ox = -1
+	}
+	oy := 1
+	if dy < 0 {
+		oy = -1
+	}
+	for ii := x; ii != x+dx; ii += ox {
+		if ii%5 == 0 {
+			if err := osd.MoveToPoint(ii, y); err != nil {
+				return err
+			}
+			if err := osd.StrokeLineToPoint(ii, y+oy*5); err != nil {
+				return err
+			}
+		}
+	}
+	for ii := y; ii != y+dy; ii += oy {
+		if ii%5 == 0 {
+			if err := osd.MoveToPoint(x, ii); err != nil {
+				return err
+			}
+			if err := osd.StrokeLineToPoint(x+ox*5, ii); err != nil {
+				return err
+			}
+		}
+	}
+	if err := osd.MoveToPoint(x, y); err != nil {
+		return err
+	}
+	if err := osd.SetStrokeColor(frskyosd.CBlack); err != nil {
+		return err
+	}
+	if err := osd.MoveToPoint(x+ox, y+oy); err != nil {
+		return err
+	}
+	if err := osd.StrokeLineToPoint(x+dx, y+oy); err != nil {
+		return err
+	}
+	if err := osd.MoveToPoint(x+ox, y+oy); err != nil {
+		return err
+	}
+	if err := osd.StrokeLineToPoint(x+ox, y+dy); err != nil {
+		return err
+	}
+
+	if err := osd.SetStrokeColor(frskyosd.CWhite); err != nil {
+		return err
+	}
+	ox *= 2
+	oy *= 2
+	if err := osd.MoveToPoint(x+ox, y+oy); err != nil {
+		return err
+	}
+	if err := osd.StrokeLineToPoint(x+dx, y+oy); err != nil {
+		return err
+	}
+	if err := osd.MoveToPoint(x+ox, y+oy); err != nil {
+		return err
+	}
+	if err := osd.StrokeLineToPoint(x+ox, y+dy); err != nil {
+		return err
+	}
+	return nil
+}
+
+// Show some stuff on the screen so the user
+// can get a better idea of how the changes are
+// affecting the OSD
+func (d *settingsDialog) drawTestPattern() error {
+	const (
+		rectSize   = 50
+		rectMargin = 20
+		lineSize   = 50
+	)
+	osd := d.osd
+	info, err := osd.Info()
+	if err != nil {
+		return err
+	}
+	if err := osd.TransactionBegin(); err != nil {
+		return err
+	}
+	if err := osd.ResetDrawing(); err != nil {
+		return err
+	}
+	if err := osd.ClearScreen(); err != nil {
+		return err
+	}
+	midX := int(info.Pixels.Width / 2)
+	midY := int(info.Pixels.Height / 2)
+	rectY := midY - rectSize/2
+	if err := osd.SetFillColor(frskyosd.CBlack); err != nil {
+		return err
+	}
+	if err := osd.FillRect(midX-rectSize/2-rectMargin-rectSize,
+		rectY, rectSize, rectSize); err != nil {
+		return err
+	}
+	if err := osd.SetFillColor(frskyosd.CGray); err != nil {
+		return err
+	}
+	if err := osd.FillRect(midX-rectSize/2, rectY, rectSize, rectSize); err != nil {
+		return err
+	}
+	if err := osd.SetFillColor(frskyosd.CWhite); err != nil {
+		return err
+	}
+	if err := osd.FillRect(midX+rectSize/2+rectMargin, rectY, rectSize, rectSize); err != nil {
+		return err
+	}
+	lineX := int(info.Pixels.Width) - 1
+	lineY := int(info.Pixels.Height) - 1
+	if err := d.drawCorner(0, 0, lineSize, lineSize); err != nil {
+		return err
+	}
+	if err := d.drawCorner(0, lineY, lineSize, -lineSize); err != nil {
+		return err
+	}
+	if err := d.drawCorner(lineX, 0, -lineSize, lineSize); err != nil {
+		return err
+	}
+	if err := d.drawCorner(lineX, lineY, -lineSize, -lineSize); err != nil {
+		return err
+	}
+	return osd.TransactionCommit()
 }
 
 func (d *settingsDialog) applyTheme() {
