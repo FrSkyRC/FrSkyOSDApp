@@ -37,7 +37,7 @@ import (
 const (
 	fontsDir   = "fonts"
 	fontsExt   = ".mcm"
-	appVersion = "2.0.0"
+	appVersion = "2.0.1"
 
 	updatesSource = "https://github.com/FrSkyRC/FrSkyOSDApp"
 
