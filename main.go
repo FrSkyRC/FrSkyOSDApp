@@ -694,7 +694,11 @@ func main() {
 	} else {
 		log.SetLevel(log.InfoLevel)
 	}
-	platformInit()
+	platformSetup()
 	app := newApp()
 	app.Run()
+}
+
+func init() {
+	platformInit()
 }

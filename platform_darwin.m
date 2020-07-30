@@ -19,7 +19,7 @@
 
 @end
 
-void platform_darwin_init(void)
+void platform_darwin_setup(void)
 {
     NSNotificationCenter *defaultCenter = [NSNotificationCenter defaultCenter];
     [defaultCenter addObserver:[Platform class]

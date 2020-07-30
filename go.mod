@@ -11,6 +11,7 @@ require (
 	github.com/gotk3/gotk3 v0.4.0 // indirect
 	github.com/hashicorp/go-version v1.2.0
 	github.com/icza/bitio v1.0.0
+	github.com/mattn/go-ieproxy v0.0.1
 	github.com/pkg/browser v0.0.0-20180916011732-0a3d74bf9ce4
 	github.com/sirupsen/logrus v1.4.2
 	github.com/sqweek/dialog v0.0.0-20200304031853-0dcd55bfe06a
