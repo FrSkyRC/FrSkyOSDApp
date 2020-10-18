@@ -26,11 +26,19 @@ WIN_ALL_DIST		:= $(WIN32_DIST) $(WIN64_DIST)
 
 FYNE_CROSS_DIST		:= fyne-cross/dist
 
+MACOS_MIN_VERSION	:= 10.10
+MMACOS_VERSION_MIN	:= -mmacosx-version-min=$(MACOS_MIN_VERSION)
+
 .PHONY: all clean
 
 all: $(MACOS_DIST) $(LINUX_ALL_DIST) $(WIN_ALL_DIST)
 
 $(MACOS_DIST): $(ALL_SRC)
+	CGO_CFLAGS=$(MMACOS_VERSION_MIN) \
+		   CGO_LDFLAGS=$(MMACOS_VERSION_MIN) \
+		   CFLAGS=$(MMACOS_VERSION_MIN) \
+		   LDFLAGS=$(MMACOS_VERSION_MIN) \
+		   go build -a
 	fyne package -appID $(APP_ID) -icon $(ICON_SRC) -name "$(APP_NAME)" -release
 	plutil -replace CFBundleShortVersionString -string $(APP_VERSION) "$(APP_NAME).app/Contents/Info.plist"
 	plutil -replace CFBundleVersion -string $(APP_VERSION) "$(APP_NAME).app/Contents/Info.plist"
